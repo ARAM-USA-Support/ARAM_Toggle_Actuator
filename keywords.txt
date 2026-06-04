@@ -1,0 +1,12 @@
+ARAM_TOGGLE_ACTUATOR KEYWORD1
+#keyword1 denotes classes
+strike KEYWORD2
+getFrequency  KEYWORD2
+retract  KEYWORD2
+stopBeat  KEYWORD2
+generateBeat  KEYWORD2
+update  KEYWORD2
+schedule  KEYWORD2
+#keyword 2 denotes functions
+
+#literal1 defines constants
