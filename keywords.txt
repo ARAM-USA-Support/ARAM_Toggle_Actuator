@@ -7,6 +7,14 @@ stopBeat  KEYWORD2
 generateBeat  KEYWORD2
 update  KEYWORD2
 schedule  KEYWORD2
+setStrikeDelay KEYWORD2
+setActuatorMode KEYWORD2
+setVibrationMode KEYWORD2
+endMovement KEYWORD2
+setFrequencyHarmonic KEYWORD2
+setHarmonicFrequencyCutoff KEYWORD2
+setVoltage KEYWORD2
+
 #keyword 2 denotes functions
 
 #literal1 defines constants
