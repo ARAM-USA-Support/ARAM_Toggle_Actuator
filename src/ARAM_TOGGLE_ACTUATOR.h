@@ -384,7 +384,6 @@ void ARAM_TOGGLE_ACTUATOR::retract(int skipTargetUpdate = 0){
     nextHitTime = micros() +  ((uint32_t)this->travelTimeDown)*MICROS_TO_MILIS;
   }
 }
-}
 
 //stops automated beat generation
 void ARAM_TOGGLE_ACTUATOR::stopBeat(){
