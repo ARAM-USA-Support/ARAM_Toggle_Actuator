@@ -45,26 +45,31 @@ void loop() {
 }
 
 ADVANCED OPTIONS:
-    Stike Duration / Delay:
-        actuator.setStrikeDelay( X )
-        Allows you to detemrine the hit duration in milliseconds
-    Set Frequency
-        actuator.setFrequency( X )
-        Sets standard actuator frequency, does not cause frequency to be played
-    Set Voltage
-        actuator.setVoltage( X )
-        Tell the actuator what voltage it is running at, this is neccisary for avoiding noisy vibrations, correctly executing the strike delay, 
-        and a few other advanced timing events
-    Set Frequency Harmonic
-        actuator.setFrequencyHarmonic( N )
-        (Only effects vibration, 0 < N <= 8)
-        This tells the actuator to try and excite the Nth harmonic instead of my target frequency, then apply damping to arrive at the target frequency
-        This is only useful in particular circumstances where you may not have a resonator that works well
-    Automatically adjust harmonics
-        actuator.setHarmonicFrequencyCutoff( X )
-        (Only effects vibration)
-        Use this to automaticaly apply the harmonic excitation to all frequencies below X
-        Defualts to 1000
+
+Stike Duration / Delay: 
+    actuator.setStrikeDelay( X )
+Allows you to detemrine the hit duration in milliseconds
+    
+Set Frequency: 
+    actuator.setFrequency( X )
+Sets standard actuator frequency, does not cause frequency to be played
+    
+Set Voltage: 
+    actuator.setVoltage( X )
+Tell the actuator what voltage it is running at, this is neccisary for avoiding noisy vibrations, correctly executing the strike delay, 
+and a few other advanced timing events
+    
+Set Frequency Harmonic: 
+    actuator.setFrequencyHarmonic( N )
+(Only effects vibration, 0 < N <= 8)
+This tells the actuator to try and excite the Nth harmonic instead of my target frequency, then apply damping to arrive at the target frequency
+This is only useful in particular circumstances where you may not have a resonator that works well
+    
+Automatically adjust harmonics: 
+    actuator.setHarmonicFrequencyCutoff( X )
+(Only effects vibration)
+Use this to automaticaly apply the harmonic excitation to all frequencies below X
+Defualts to 1000
     
 
 
