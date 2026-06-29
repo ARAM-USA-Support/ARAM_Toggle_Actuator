@@ -41,6 +41,12 @@ void setup() {
   a3  = ARAM_TOGGLE_ACTUATOR(CNTRL_PIN_C);
   a4  = ARAM_TOGGLE_ACTUATOR(CNTRL_PIN_D);
 
+  //declare each one as a standard actuator (as opposed to vibrator)
+  a1.setActuatorMode(ARAM_TOGGLE_ACTUATOR_Actuator);
+  a2.setActuatorMode(ARAM_TOGGLE_ACTUATOR_Actuator);
+  a3.setActuatorMode(ARAM_TOGGLE_ACTUATOR_Actuator);
+  a4.setActuatorMode(ARAM_TOGGLE_ACTUATOR_Actuator);
+
   //this var is used for the timer later
   lastSwitch = micros();
 }
