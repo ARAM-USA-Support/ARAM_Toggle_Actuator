@@ -1,5 +1,4 @@
 //ARAM_TOGGLE_ACTUATOR Library      -  Jack Serlin                rev: 6/5/2026               A.R.A.M. - American Robotics Assisted Manufacturing
-
 #if defined(ESP32)
   #include <soc/gpio_reg.h>
   #include <soc/io_mux_reg.h>
@@ -12,7 +11,7 @@
 #define ARAM_SMA01P_
 
 #define SET_RAW_PIN_OUT_HIGH(reg,a) reg |= (1<<a)
-#define SET_RAW_PIN_OUT_LOW(reg,a) reg &= (!(1<<a))
+#define SET_RAW_PIN_OUT_LOW(reg,a) reg &= (~(1<<a))
 
 #define MAX_SCHEDULED_NOTES 100
 #define MICROS_TO_MILIS (1000)
@@ -22,18 +21,18 @@ void fastWrite(uint8_t pin, uint8_t state){
   if((pin < 0)||pin>(48))return;
   if(pin <= 31){
     if(state==HIGH){
-      *(volatile uint32_t*)(GPIO_OUT_W1TS_REG) |= 1<<pin;
+      *(volatile uint32_t*)(GPIO_OUT_W1TS_REG) = 1<<pin;
     }else{
-      *(volatile uint32_t*)(GPIO_OUT_W1TC_REG) |= 1<<pin;
+      *(volatile uint32_t*)(GPIO_OUT_W1TC_REG) = 1<<pin;
     }
     return;
   }
 
   #if defined(GPIO_OUT1_W1TS_REG)
   if(state==HIGH){
-    *(volatile uint32_t*)(GPIO_OUT1_W1TS_REG) |= 1<<(pin - 32);
+    *(volatile uint32_t*)(GPIO_OUT1_W1TS_REG) = 1<<(pin - 32);
   }else{
-    *(volatile uint32_t*)(GPIO_OUT1_W1TC_REG) |= 1<<(pin - 32);
+    *(volatile uint32_t*)(GPIO_OUT1_W1TC_REG) = 1<<(pin - 32);
   }
   return;
   #endif
@@ -43,6 +42,7 @@ void fastWrite(uint8_t pin, uint8_t state){
   digitalWrite(pin,state);
 }
 #endif
+//#include "ARAM_TOGGLE_ACTUATOR.h";
 
 #define ARAM_TOGGLE_ACTUATOR_DEFAULT_VOLTAGE (4.5)
 #define ARAM_TOGGLE_ACTUATOR_ASSUMED_FRICTION (0.05)
@@ -50,17 +50,22 @@ void fastWrite(uint8_t pin, uint8_t state){
 #define ARAM_TOGGLE_ACTUATOR_ASSUMED_PLUNGER_MASS (0.007)
 #define ARAM_TOGGLE_ACTUATOR_ASSUMED_FORCE_PER_VOLT (0.22/5)
 #define ARAM_TOGGLE_ACTUATOR_ASSUMED_PLUNGER_TRAVEL (0.0045)
-#define ARAM_TOGGLE_ACTUATOR_MIN_PULSE_INTERVAL (100)
-#define ARAM_TOGGLE_ACTUATOR_DEFAULT_STRIKE_WAIT (20)
+#define ARAM_TOGGLE_ACTUATOR_MIN_PULSE_INTERVAL (5)
+#define ARAM_TOGGLE_ACTUATOR_DEFAULT_STRIKE_WAIT (0)
 #define ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME (2000)
 #define ARAM_TOGGLE_ACTUATOR_HIT_TIME_OFF_FLAG (1)
 #define ARAM_TOGGLE_ACTUATOR_VOLUME_DAMPING_CYCLES (10)
 #define ARAM_TOGGLE_ACTUATOR_MAX_HARMONICS (8)
+#define ARAM_TOGGLE_ACTUATOR_DUTY_RESOLUTION (9)
+#define ARAM_TOGGLE_ACTUATOR_MAX_CHANNELS (6)
+#define ARAM_TOGGLE_ACTUATOR_VOID_CHANNEL_CONST (255)
+#define ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION (24)
+#define ARAM_TOGGLE_DAMPING_FREQ_MAX (1200.0)
 
 enum ARAM_TOGGLE_ACTUATOR_MODE {ARAM_TOGGLE_ACTUATOR_Actuator,ARAM_TOGGLE_ACTUATOR_Frequency_Generator};
 enum ARAM_TOGGLE_ACTUATOR_VIBRATION_MODE {ARAM_TOGGLE_ACTUATOR_Vibration_None,ARAM_TOGGLE_ACTUATOR_Vibration_On,ARAM_TOGGLE_ACTUATOR_Vibration_Full_Stroke,ARAM_TOGGLE_ACTUATOR_Vibration_Pitch};
 
-
+static int usedChannels [6] = {0,0,0,0,0,0};
 //ARAM toggle actuator object, represents a toggle actuator
 class ARAM_TOGGLE_ACTUATOR{
 
@@ -69,12 +74,6 @@ class ARAM_TOGGLE_ACTUATOR{
     ARAM_TOGGLE_ACTUATOR(){
 
     }
-
-    ARAM_TOGGLE_ACTUATOR(ARAM_TOGGLE_ACTUATOR &other){
-        this->pin = other.pin;
-        this->curState = other.curState;
-    }
-
     //define with frequency for use in instrument
     ARAM_TOGGLE_ACTUATOR(int pin, double frequency = 0){
        
@@ -89,23 +88,38 @@ class ARAM_TOGGLE_ACTUATOR{
       this->nextSwitch = 0;
       this->isSilent = 0;
       this->doBeat = 0;
+      
+      travelTimeUp = 1;
+      travelTimeDown = 1;
 
       vibrationMode = ARAM_TOGGLE_ACTUATOR_Vibration_On;
-      actuatorMode = ARAM_TOGGLE_ACTUATOR_Frequency_Generator;
+      setActuatorMode(ARAM_TOGGLE_ACTUATOR_Frequency_Generator);
+      resetFrequencyDampingTable();
       
+      isPerpToGravity = 0;
       setVoltage(ARAM_TOGGLE_ACTUATOR_DEFAULT_VOLTAGE);
       this->hitTarget = 0;
       nextScheduledSwitch = 0;
       nextHitTime = 0;
       currentlyStruck = 0;
-      isPerpToGravity = 0;
       strikeVibrationDelay = ARAM_TOGGLE_ACTUATOR_DEFAULT_STRIKE_WAIT;
       doVolumeDamping = 0;
       volume = ARAM_TOGGLE_ACTUATOR_VOLUME_DAMPING_CYCLES;
       curVolumeCycle = 0;
       harmonicTarget = 1;
-      frequencyAutoHarmonicCutoff = 1000;
+      frequencyAutoHarmonicCutoff = 100;
       _updateVibrationTime();
+
+      isScheduledToStop = 0;
+      hasCompletedStop = 0;
+      scheduledFrequency = -1;
+      targetFreq = frequency;
+      glideRate = 1; 
+      isLEDCAttached = 0;
+      _channel = ARAM_TOGGLE_ACTUATOR_VOID_CHANNEL_CONST;
+      turnOnLEDCMode();
+      _resolution = ARAM_TOGGLE_ACTUATOR_DUTY_RESOLUTION;
+
     }
 
     void strike( int );
@@ -130,7 +144,13 @@ class ARAM_TOGGLE_ACTUATOR{
     void setFrequencyHarmonic(int harmonic);
     void setHarmonicFrequencyCutoff(double frequencyCutoff);
 
-    private:
+    void turnOffLEDCMode();
+    void turnOnLEDCMode();
+
+    void resetFrequencyDampingTable();
+    void setFrequencyDamping(double minFrequency, double maxFrequency, double dampingAmount);
+
+    //private:
     int pin;
     int curState;
     uint32_t timeClock;
@@ -164,12 +184,182 @@ class ARAM_TOGGLE_ACTUATOR{
 
     int isPerpToGravity;
 
+    int isScheduledToStop;
+    int hasCompletedStop;
+    double scheduledFrequency;
+
+    double targetFreq;
+    double glideRate; // Hz per update cycle
+
+    int isLEDCMode;
+    int isLEDCAttached;
+    uint32_t _LEDCRampTimer;
+    double _LEDCDynamicRampTimer;
+    uint8_t _resolution;
+    uint8_t _channel; 
+
+    double frequencyDamping [ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION];
+
 
     void _updateStepperPinOutputs();
     void _updateVibrationTime();
     void _updateFrequencyVibrationTime(double frequency);
 
+    void dettachLEDC();
+    void attachLEDC();
+
+  double getVibrateRatio(double frequency){
+    double ratio = ((double)(travelTimeUp))/(travelTimeUp+travelTimeDown);
+
+    double adj = 0;
+    double frequencyStep = ARAM_TOGGLE_DAMPING_FREQ_MAX/ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION;
+    int frequencyDampingTableIndex = frequency / frequencyStep;
+    if(frequencyDampingTableIndex < 0) frequencyDampingTableIndex = 0;
+    else if(frequencyDampingTableIndex >= ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION) frequencyDampingTableIndex = ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION-1;
+    double adjAmt = frequencyDamping[frequencyDampingTableIndex];
+    adj = adjAmt*(1-ratio) + ratio;
+    
+    return ratio + (1-ratio)*adjAmt;
+  }
+
+  
+
+  void setTone(double frequency) {
+    uint32_t frequint = (uint32_t)(frequency + 0.5);
+    double ratio = getVibrateRatio(frequency);
+    // 1. Constrain ratio to safe bounds (0.0 to 1.0)
+    if (ratio < 0.0) ratio = 0.0;
+    if (ratio > 1.0) ratio = 1.0;
+    ratio = 0.75;
+
+    // 2. Calculate the raw integer duty cycle value based on the resolution
+    uint32_t maxDuty = (1 << _resolution) - 1; // e.g., 255 for 8-bit
+    uint32_t dutyValue = (uint32_t)(ratio * maxDuty);
+
+    // 3. Update the hardware registers
+    #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+      // Core v3.x API
+      ledcChangeFrequency(pin, frequint, _resolution);
+      ledcWrite(pin, dutyValue);
+    #else
+      // Core v2.x API
+      ledcSetup(_channel, frequint, _resolution);
+      ledcWrite(_channel, dutyValue);
+    #endif
+  }
+
+  void setQuiet() {
+    uint32_t frequint = (uint32_t)(freq);
+    targetFreq = freq;
+
+    uint32_t maxDuty = (1 << _resolution); 
+    uint32_t dutyValue = (uint32_t)( maxDuty);
+
+    // 3. Update the hardware registers
+    #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+      // Core v3.x API
+      ledcChangeFrequency(pin, frequint, _resolution);
+      ledcWrite(pin, dutyValue);
+    #else
+      // Core v2.x API
+      ledcSetup(_channel, frequint, _resolution);
+      ledcWrite(_channel, dutyValue);
+    #endif
+  }
+
+  void assignChannel(){
+    if(_channel != ARAM_TOGGLE_ACTUATOR_VOID_CHANNEL_CONST) return;
+    for(int i = 0; i < ARAM_TOGGLE_ACTUATOR_MAX_CHANNELS; i++){
+      if(usedChannels[i]==0){
+        usedChannels[i] = 1;
+        _channel = i;
+        return;
+      }
+    }
+  }
+  void yeildChannel(){
+    if(_channel < 0 || _channel >= ARAM_TOGGLE_ACTUATOR_MAX_CHANNELS) return;
+    usedChannels[_channel] = 0;
+    _channel = ARAM_TOGGLE_ACTUATOR_VOID_CHANNEL_CONST;
+  }
+
 };
+
+void ARAM_TOGGLE_ACTUATOR::resetFrequencyDampingTable(){
+
+    double frequencyStep = ARAM_TOGGLE_DAMPING_FREQ_MAX/ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION;
+    double frequency = 0;
+    for(int i = 0; i < ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION; i++){
+      frequencyDamping[i] = 0;
+      frequency = (1+i)*frequencyStep;
+      if(frequency < 890){
+        frequencyDamping[i] =  0.85;
+        if(frequency > 450){
+          frequencyDamping[i] = 0.20;
+        }
+        if(frequency > 300){
+          frequencyDamping[i] = 0.40;
+        }
+        if(frequency > 150){
+          frequencyDamping[i] = 0.67;
+        }
+      }
+    }
+
+  }
+
+  void ARAM_TOGGLE_ACTUATOR::setFrequencyDamping(double minFrequency, double maxFrequency, double dampingAmount){
+
+    double frequencyStep = ARAM_TOGGLE_DAMPING_FREQ_MAX/ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION;
+    double frequency = 0;
+    for(int i = 0; i < ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION; i++){
+      frequency = (1+i)*frequencyStep;
+      if( (minFrequency > frequency)||(maxFrequency <= frequency) ){
+        continue;
+      }
+      frequencyDamping[i] = dampingAmount;
+    }
+
+  }
+
+void ARAM_TOGGLE_ACTUATOR::dettachLEDC(){
+  if(!isLEDCAttached)return;
+  isLEDCAttached = 0;
+  // 1. Detach from LEDC (Version-compatible check)
+  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    ledcDetach(pin); 
+  #else
+    ledcDetachPin(pin);
+  #endif
+
+  // 2. Set as standard output
+  pinMode(pin, OUTPUT);
+  yeildChannel();
+}
+
+void ARAM_TOGGLE_ACTUATOR::attachLEDC(){
+  assignChannel();
+  if(isLEDCAttached)return;
+  isLEDCAttached = 1;
+  // Re-attach to the hardware PWM (Version-compatible check)
+  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    ledcAttach(pin, (uint32_t)freq, _resolution);
+  #else
+    ledcSetup(_channel, (uint32_t)freq, _resolution);
+    ledcAttachPin(pin, _channel);
+  #endif
+}
+
+
+void ARAM_TOGGLE_ACTUATOR::turnOffLEDCMode(){
+  isLEDCMode = 0;
+  dettachLEDC();
+}
+
+void ARAM_TOGGLE_ACTUATOR::turnOnLEDCMode(){
+  isLEDCMode = 1;
+  //attachLEDC();
+}
 
 //Do volume damping option
 void ARAM_TOGGLE_ACTUATOR::setVolumeDamping(int newValue){
@@ -249,19 +439,59 @@ void  ARAM_TOGGLE_ACTUATOR::_updateFrequencyVibrationTime(double frequency){
 
 //end current movement
 void ARAM_TOGGLE_ACTUATOR::endMovement(){
-  if( ( actuatorMode == ARAM_TOGGLE_ACTUATOR_Frequency_Generator) ){
-    this->strike(0);
+
+  if(isLEDCAttached){
+    //dettachLEDC();
+    //strike(1);
+    setQuiet();
     nextSwitch = 0;
     nextHitTime = ARAM_TOGGLE_ACTUATOR_HIT_TIME_OFF_FLAG;
     this->currentlyStruck = 0; 
     this->hitTarget = false; 
     nextScheduledSwitch = 0;
+    return;
+  }
+
+
+  if((!isScheduledToStop)&&!(hasCompletedStop)){
+    isScheduledToStop = 1;
+    hasCompletedStop = 0;
+    return;
+  }
+  if(!hasCompletedStop) return;
+
+
+  //if we there is a vibration scheduled, start it now
+  if(scheduledFrequency!= -1){
+    //nextHitTime = 0;
+    currentlyStruck = 1;
+    this->hitTarget = true;
+    vibrationMode = ARAM_TOGGLE_ACTUATOR_Vibration_Pitch;
+    targetFreq = scheduledFrequency;
+    nextSwitch = micros() + ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME*MICROS_TO_MILIS;
+    scheduledFrequency = -1;
+    nextHitTime = micros() +  ((uint32_t)this->vibrationTimeDown);
+    curState = 1;
+    _updateStepperPinOutputs();
+    nextScheduledSwitch = 0;
+    isScheduledToStop = 0;
+    hasCompletedStop = 0;
+    return;
+  }
+  else if( ( actuatorMode == ARAM_TOGGLE_ACTUATOR_Frequency_Generator) ){
+    nextSwitch = 0;
+    nextHitTime = ARAM_TOGGLE_ACTUATOR_HIT_TIME_OFF_FLAG;
+    this->currentlyStruck = 0; 
+    this->hitTarget = false; 
   }
   else if( actuatorMode == ARAM_TOGGLE_ACTUATOR_Actuator){
-    this->retract(0);
     nextSwitch = 0;
     nextScheduledSwitch = 0;
   }
+
+  hasCompletedStop = 0;
+ 
+
 }
 
 //used to update vibration params depending on actuator state
@@ -286,16 +516,30 @@ void ARAM_TOGGLE_ACTUATOR::setFrequency(double frequency){
 
 //causes actuator to vibrate at a specific frequency
 void ARAM_TOGGLE_ACTUATOR::vibrateAtFrequency(double frequency){
+  if(isLEDCMode){
+    attachLEDC();
+    targetFreq = frequency;
+    freq = frequency;
+    setTone(targetFreq);
+    nextSwitch = micros() + ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME*MICROS_TO_MILIS;
+    return;
+  }
   if(nextSwitch==0){
-    strike(0);
-    nextHitTime = 0;
     nextSwitch = 0;
+    nextHitTime = 0;
     currentlyStruck = 1;
     this->hitTarget = true;
+    vibrationMode = ARAM_TOGGLE_ACTUATOR_Vibration_Pitch;
+    _updateFrequencyVibrationTime(frequency);
+    nextSwitch = micros() + ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME*MICROS_TO_MILIS;
+
+  }else{
+
+    targetFreq = frequency;
+    nextSwitch = micros() + ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME*MICROS_TO_MILIS;
   }
-  vibrationMode = ARAM_TOGGLE_ACTUATOR_Vibration_Pitch;
-  _updateFrequencyVibrationTime(frequency);
-  schedule(ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME);
+
+
 }
 
 
@@ -336,6 +580,13 @@ void ARAM_TOGGLE_ACTUATOR::setVibrationMode(ARAM_TOGGLE_ACTUATOR_VIBRATION_MODE 
 //set actuator mode
 void ARAM_TOGGLE_ACTUATOR::setActuatorMode(ARAM_TOGGLE_ACTUATOR_MODE actuatorMode){
   this->actuatorMode = actuatorMode;
+  if(actuatorMode == ARAM_TOGGLE_ACTUATOR_Frequency_Generator){
+    turnOnLEDCMode();
+    strike(1);
+  }else{
+    turnOffLEDCMode();
+    retract(1);
+  }
 }
 
 //sets strike delay (hit duration)
@@ -399,33 +650,91 @@ void ARAM_TOGGLE_ACTUATOR::generateBeat( int strikeLength, int timing ){
 
 //updates the actuators state, call this during loop to utilize scheduling
 void ARAM_TOGGLE_ACTUATOR::update(){
+
+  // Glide towards the target frequency if they do not match
+  if (freq != targetFreq) {
+    if (freq < targetFreq) {
+      freq += glideRate;
+      if (freq > targetFreq) freq = targetFreq;
+    } else {
+      freq -= glideRate;
+      if (freq < targetFreq) freq = targetFreq;
+    }
+    _updateVibrationTime(); // Recalculate timing parameters on the fly
+    if(isLEDCMode){
+      attachLEDC();
+      setTone(freq);
+    }
+  }
+
   timeClock = micros();
   if(nextSwitch==0){
+    if(isScheduledToStop){
+      isScheduledToStop = 0;
+      hasCompletedStop = 1;
+      endMovement();
+      return;
+    }
     if(this->nextScheduledSwitch == 0){
       if(!this->doBeat) return;
       if(!(this->curState)){
+        strike(0);
         this->nextScheduledSwitch = ((uint32_t)this->beatStikeLength)*MICROS_TO_MILIS;
       }
       else{
-        this->nextScheduledSwitch = ((uint32_t)this->beatTiming)*MICROS_TO_MILIS - ((uint32_t)this->beatStikeLength)*MICROS_TO_MILIS;
+        retract(0);
+        this->nextScheduledSwitch = ((uint32_t)this->beatTiming)*MICROS_TO_MILIS - (((uint32_t)this->beatStikeLength)*MICROS_TO_MILIS);
       }
     } 
     nextSwitch = micros()+ this->nextScheduledSwitch;
+    nextScheduledSwitch = 0;
   }
   if(timeClock > nextSwitch){
-    endMovement();
+    if(doBeat) { nextSwitch = 0; return; }
+    if((isScheduledToStop||hasCompletedStop)&&(actuatorMode==ARAM_TOGGLE_ACTUATOR_Frequency_Generator)){
+      isScheduledToStop = 0;
+      hasCompletedStop = 1;
+      endMovement();
+      return;
+    }
+    isScheduledToStop = 1;
+    if((actuatorMode==ARAM_TOGGLE_ACTUATOR_Frequency_Generator)){
+      nextSwitch = micros() +  ((uint32_t)this->vibrationTimeUp);
+      strike(1);
+    }else{
+      nextSwitch = micros() +  ((uint32_t)this->vibrationTimeDown);
+      retract(1);
+    }
+    nextHitTime = ARAM_TOGGLE_ACTUATOR_HIT_TIME_OFF_FLAG;
   }else if((nextHitTime!=ARAM_TOGGLE_ACTUATOR_HIT_TIME_OFF_FLAG)&&(timeClock > nextHitTime)){
     if(!this->hitTarget){
       this->hitTarget = true;
       if(curState){
         currentlyStruck = 1;
       }
-      if(curState&&(vibrationMode != ARAM_TOGGLE_ACTUATOR_Vibration_None)){
+      if((curState&&(vibrationMode != ARAM_TOGGLE_ACTUATOR_Vibration_None))&&(actuatorMode==ARAM_TOGGLE_ACTUATOR_Actuator)){
         nextHitTime = micros() +  ((uint32_t)strikeVibrationDelay)*MICROS_TO_MILIS;
       }
     }else if(nextHitTime!=ARAM_TOGGLE_ACTUATOR_HIT_TIME_OFF_FLAG){
       if(currentlyStruck && (vibrationMode != ARAM_TOGGLE_ACTUATOR_Vibration_None)){
+
+        if(isLEDCMode){
+
+          if(isScheduledToStop){
+            endMovement();
+          }
+
+          return;
+        }
+
+
         if(this->curState){
+          if((isScheduledToStop||hasCompletedStop)&&(actuatorMode==ARAM_TOGGLE_ACTUATOR_Frequency_Generator)){
+            isScheduledToStop = 0;
+            hasCompletedStop = 1;
+            endMovement();
+            return;
+          }
           curVolumeCycle ++;
           if((curVolumeCycle < volume)||(doVolumeDamping==0)){
             nextHitTime = micros() +  ((uint32_t)this->vibrationTimeDown);
@@ -436,6 +745,12 @@ void ARAM_TOGGLE_ACTUATOR::update(){
             curVolumeCycle = 0;
           }
         }else{
+          if((isScheduledToStop||hasCompletedStop)&&(actuatorMode==ARAM_TOGGLE_ACTUATOR_Actuator)){
+            isScheduledToStop = 0;
+            hasCompletedStop = 1;
+            endMovement();
+            return;
+          }
           nextHitTime = micros() +  ((uint32_t)this->vibrationTimeUp);
           strike(1);
         }
@@ -444,7 +759,8 @@ void ARAM_TOGGLE_ACTUATOR::update(){
   }
 }
 
-//schedule siwth of state in X milliseconds
+//schedule switch of state in X milliseconds
 void ARAM_TOGGLE_ACTUATOR::schedule(int time){
   this->nextScheduledSwitch = ((uint32_t)time)*MICROS_TO_MILIS;
+  nextSwitch = micros() + nextScheduledSwitch;
 }
