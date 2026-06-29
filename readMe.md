@@ -71,7 +71,10 @@ Automatically adjust harmonics:
 Use this to automaticaly apply the harmonic excitation to all frequencies below X
 Defualts to 1000
     
-
+Set force curve:
+  actuator.setFrequencyDamping(minimumFrequency, maximumFrequency, amount reduction (0.0 to 1.0);
+Tell the actuator to reduce the amount of by some percentage between the min and max frequency.
+(Linealry damps the actuator at these frequencies)
 
 
 
