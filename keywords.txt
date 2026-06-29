@@ -16,6 +16,8 @@ endMovement KEYWORD2
 setFrequencyHarmonic KEYWORD2
 setHarmonicFrequencyCutoff KEYWORD2
 setVoltage KEYWORD2
+setFrequencyDamping KEYWORD2
+setTone KEYWORD2
 
 #keyword 2 denotes functions
 
