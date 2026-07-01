@@ -1,4 +1,7 @@
+//ARAM Toggle Actuator     Example Code                rev: 6/30/2026
 
+/*This example shows the frequency generation use of a single toggle actuator, using pin 0. The actuator performs a frequency sweeep from 500-1000 hertz, however you may change this*/
+#include "ARAM_Toggle_Actuator.h";
 #define CNTRL_PIN_A 0     //change me to your desired cntrl pin
 ARAM_TOGGLE_ACTUATOR a1;
 
