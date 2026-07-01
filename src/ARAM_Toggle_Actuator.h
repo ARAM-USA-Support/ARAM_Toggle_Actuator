@@ -1,4 +1,8 @@
-//ARAM_TOGGLE_ACTUATOR Library      -  Jack Serlin                rev: 6/5/2026               A.R.A.M. - American Robotics Assisted Manufacturing
+//ARAM_Toggle_Actuator Library      -  Jack Serlin                rev: 6/30/2026               A.R.A.M. - American Robotics Assisted Manufacturing
+
+#ifndef ARAM_MOTCA_0
+#define ARAM_MOTCA_0
+
 #if defined(ESP32)
   #include <soc/gpio_reg.h>
   #include <soc/io_mux_reg.h>
@@ -8,7 +12,6 @@
   #define IS_GENERIC_ARCH
 #endif
 
-#define ARAM_SMA01P_
 
 #define SET_RAW_PIN_OUT_HIGH(reg,a) reg |= (1<<a)
 #define SET_RAW_PIN_OUT_LOW(reg,a) reg &= (~(1<<a))
@@ -42,8 +45,6 @@ void fastWrite(uint8_t pin, uint8_t state){
   digitalWrite(pin,state);
 }
 #endif
-//#include "ARAM_TOGGLE_ACTUATOR.h";
-
 #define ARAM_TOGGLE_ACTUATOR_DEFAULT_VOLTAGE (4.5)
 #define ARAM_TOGGLE_ACTUATOR_ASSUMED_FRICTION (0.05)
 #define ARAM_TOGGLE_ACTUATOR_ASSUMED_FG (0.008*9.8)
@@ -212,6 +213,24 @@ class ARAM_TOGGLE_ACTUATOR{
     double ratio = ((double)(travelTimeUp))/(travelTimeUp+travelTimeDown);
 
     double adj = 0;
+    /*double maxAdjFreq = 890;
+    double minAdjFreq2 = 450;
+    double minAdjFreq3 = 300;
+    double minAdjFreq4 = 150;
+    if(frequency < maxAdjFreq){
+      adj =  0.85*(1-ratio) + ratio;
+      if(frequency > minAdjFreq2){
+        adj = 0.20*(1-ratio) + ratio;
+      }
+      if(frequency > minAdjFreq3){
+        adj = 0.40*(1-ratio) + ratio;
+      }
+      if(frequency > minAdjFreq4){
+        adj = 0.67*(1-ratio) + ratio;
+      }
+    }
+    return ratio * (1  - adj) + adj;
+    */
     double frequencyStep = ARAM_TOGGLE_DAMPING_FREQ_MAX/ARAM_TOGGLE_DAMPING_FREQ_RESOLUTION;
     int frequencyDampingTableIndex = frequency / frequencyStep;
     if(frequencyDampingTableIndex < 0) frequencyDampingTableIndex = 0;
@@ -479,12 +498,15 @@ void ARAM_TOGGLE_ACTUATOR::endMovement(){
     return;
   }
   else if( ( actuatorMode == ARAM_TOGGLE_ACTUATOR_Frequency_Generator) ){
+    //this->strike(0);
     nextSwitch = 0;
     nextHitTime = ARAM_TOGGLE_ACTUATOR_HIT_TIME_OFF_FLAG;
     this->currentlyStruck = 0; 
     this->hitTarget = false; 
+    //nextScheduledSwitch = 0;
   }
   else if( actuatorMode == ARAM_TOGGLE_ACTUATOR_Actuator){
+    //this->retract(0);
     nextSwitch = 0;
     nextScheduledSwitch = 0;
   }
@@ -525,19 +547,27 @@ void ARAM_TOGGLE_ACTUATOR::vibrateAtFrequency(double frequency){
     return;
   }
   if(nextSwitch==0){
+    //strike(0);
     nextSwitch = 0;
     nextHitTime = 0;
     currentlyStruck = 1;
     this->hitTarget = true;
     vibrationMode = ARAM_TOGGLE_ACTUATOR_Vibration_Pitch;
     _updateFrequencyVibrationTime(frequency);
+    //schedule(ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME);
     nextSwitch = micros() + ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME*MICROS_TO_MILIS;
 
   }else{
+    /*endMovement();
+    scheduledFrequency = frequency;*/
 
     targetFreq = frequency;
     nextSwitch = micros() + ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME*MICROS_TO_MILIS;
   }
+  //vibrationMode = ARAM_TOGGLE_ACTUATOR_Vibration_Pitch;
+  //_updateFrequencyVibrationTime(frequency);
+  //schedule(ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME);
+  //nextSwitch = micros() + ARAM_TOGGLE_ACTUATOR_MAX_TOTAL_VIBRATION_TIME*MICROS_TO_MILIS;
 
 
 }
@@ -759,8 +789,10 @@ void ARAM_TOGGLE_ACTUATOR::update(){
   }
 }
 
-//schedule switch of state in X milliseconds
+//schedule siwth of state in X milliseconds
 void ARAM_TOGGLE_ACTUATOR::schedule(int time){
   this->nextScheduledSwitch = ((uint32_t)time)*MICROS_TO_MILIS;
   nextSwitch = micros() + nextScheduledSwitch;
 }
+
+#endif
