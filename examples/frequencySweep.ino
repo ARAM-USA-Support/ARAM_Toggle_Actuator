@@ -18,13 +18,6 @@ uint32_t switchTimer = 0;
 void setup() {
 
   a1  = ARAM_TOGGLE_ACTUATOR(CNTRL_PIN_A,800);
-
-  // Initialize the built-in BLEMidiServer object
-  BLEMidiServer.begin("A.R.A.M. Metal Orchestra");
-
-  // Register callbacks to the global object
-  BLEMidiServer.setNoteOnCallback(handleNoteOn);
-  BLEMidiServer.setNoteOffCallback(handleNoteOff);
   timerEndVal = micros() + timerLength;
   switchTimer = micros() + microsPerHtzChange;
   a1.vibrateAtFrequency(curFreq);
