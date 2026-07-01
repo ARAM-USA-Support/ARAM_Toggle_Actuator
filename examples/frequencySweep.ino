@@ -42,4 +42,4 @@ void loop() {
     a1.setTone(curFreq);
     a1.schedule((seconds*1001*MICROS_TO_MILIS));
   }
-}*/
+}
