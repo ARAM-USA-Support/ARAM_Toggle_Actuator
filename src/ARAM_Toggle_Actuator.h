@@ -249,7 +249,7 @@ class ARAM_TOGGLE_ACTUATOR{
     // 1. Constrain ratio to safe bounds (0.0 to 1.0)
     if (ratio < 0.0) ratio = 0.0;
     if (ratio > 1.0) ratio = 1.0;
-    ratio = 0.75;
+    //ratio = 0.75;
 
     // 2. Calculate the raw integer duty cycle value based on the resolution
     uint32_t maxDuty = (1 << _resolution) - 1; // e.g., 255 for 8-bit
